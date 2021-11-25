@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 mod ast_node;
 mod simple_lexer;
 mod token;
