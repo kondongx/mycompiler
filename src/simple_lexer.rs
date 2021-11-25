@@ -93,11 +93,20 @@ impl SimpleLexer {
         ch == ' ' || ch == '\t' || ch == '\n'
     }
 
+    fn init(&mut self) {
+        self.tokens = Default::default();
+        self.token_text = Default::default();
+        self.token = Default::default();
+        self.dfastate = Default::default();
+    }
+
+    /// 有限状态机进入初始状态。 这个初始状态其实并不做停留，它马上进入其他状
+    /// 态。 开始解析的时候，进入初始状态；某个Token解析完毕，也进入初始状态，在
+    /// 这里把Token记下来，然后建立一个新的Token。
     fn init_token(&mut self, ch: char) -> DfaState {
         if self.token_text.len() > 0 {
             self.token.text = self.token_text.clone();
             self.tokens.push(Box::new(self.token.clone()));
-
             self.token_text = String::new();
         }
 
@@ -170,8 +179,9 @@ impl SimpleLexer {
         new_state
     }
 
-    pub fn tokenizer(mut self, code: String) -> SimpleTokenReader {
+    pub fn tokenizer(&mut self, code: String) -> SimpleTokenReader {
         let mut state = DfaState::Initial;
+        self.init();
         for ch in code.chars() {
             match state {
                 DfaState::Initial => state = self.init_token(ch), // 重新确定后续状态
@@ -191,7 +201,7 @@ impl SimpleLexer {
                         state = self.init_token(ch); // 退出 GT 状态, 并保存 Token
                     }
                 }
-                DfaState::GE => {}
+                DfaState::GE => state = self.init_token(ch),
                 DfaState::Assignment => {
                     if self.is_blank(ch) {
                         state = self.init_token(ch);
@@ -237,19 +247,27 @@ impl SimpleLexer {
                     if self.is_blank(ch) {
                         self.token.token_type = TokenType::Int;
                         state = self.init_token(ch);
+                    } else {
+                        state = DfaState::Id;
+                        self.token_text.push(ch);
                     }
                 }
-                _ => {}
+                _ => state = self.init_token(ch),
             }
         }
+
+        if self.token_text.len() > 0 {
+            self.init_token(code.chars().last().unwrap());
+        }
+
         SimpleTokenReader {
-            tokens: self.tokens,
+            tokens: self.tokens.clone(),
             pos: 0,
         }
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SimpleToken {
     pub token_type: TokenType,
     pub text: String,
@@ -318,10 +336,34 @@ mod tests {
 
     #[test]
     fn test_simple_lexer() {
-        let lexer = SimpleLexer::default();
-        let script = String::from("int age = 45;");
+        let mut lexer = SimpleLexer::default();
 
+        let script = String::from("int age = 45;");
         println!("parse: {}", script);
+        let token_reader = lexer.tokenizer(script);
+        SimpleLexer::dump(token_reader);
+
+        // 测试 inta 的解析
+        let script = String::from("inta age = 45;");
+        println!("\nparse: {}", script);
+        let token_reader = lexer.tokenizer(script);
+        SimpleLexer::dump(token_reader);
+
+        // 测试 in 的解析
+        let script = String::from("in age = 45;");
+        println!("\nparse: {}", script);
+        let token_reader = lexer.tokenizer(script);
+        SimpleLexer::dump(token_reader);
+
+        // 测试 >= 的解析
+        let script = String::from("age >= 45;");
+        println!("\nparse: {}", script);
+        let token_reader = lexer.tokenizer(script);
+        SimpleLexer::dump(token_reader);
+
+        // 测试 > 的解析
+        let script = String::from("age > 45;");
+        println!("\nparse: {}", script);
         let token_reader = lexer.tokenizer(script);
         SimpleLexer::dump(token_reader);
     }
